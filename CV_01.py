@@ -13,12 +13,13 @@ scale = 1.0
 mouse_button_pressed = False
 last_mouse_x = 0
 last_mouse_y = 0
-wall_texture_id = None  # textura de paredes
-roof_texture_id = None  # textura para todos los tejados
+wall_texture_id = None
+roof_texture_id = None
 pan_x = 0.0
 pan_y = 0.0
 middle_mouse_pressed = False
-
+window_width = 800
+window_height = 600
 
 # ---------- TEXTURA ----------
 def load_texture(path):
@@ -58,32 +59,26 @@ def draw_cube(x, y, z, width, height, depth):
     glBindTexture(GL_TEXTURE_2D, wall_texture_id)
 
     glBegin(GL_QUADS)
-    # Frente
     glTexCoord2f(0, 0); glVertex3f(x, y, z)
     glTexCoord2f(1, 0); glVertex3f(x + width, y, z)
     glTexCoord2f(1, 1); glVertex3f(x + width, y + height, z)
     glTexCoord2f(0, 1); glVertex3f(x, y + height, z)
-    # Atrás
     glTexCoord2f(0, 0); glVertex3f(x, y, z - depth)
     glTexCoord2f(1, 0); glVertex3f(x + width, y, z - depth)
     glTexCoord2f(1, 1); glVertex3f(x + width, y + height, z - depth)
     glTexCoord2f(0, 1); glVertex3f(x, y + height, z - depth)
-    # Izquierda
     glTexCoord2f(0, 0); glVertex3f(x, y, z)
     glTexCoord2f(1, 0); glVertex3f(x, y, z - depth)
     glTexCoord2f(1, 1); glVertex3f(x, y + height, z - depth)
     glTexCoord2f(0, 1); glVertex3f(x, y + height, z)
-    # Derecha
     glTexCoord2f(0, 0); glVertex3f(x + width, y, z)
     glTexCoord2f(1, 0); glVertex3f(x + width, y, z - depth)
     glTexCoord2f(1, 1); glVertex3f(x + width, y + height, z - depth)
     glTexCoord2f(0, 1); glVertex3f(x + width, y + height, z)
-    # Abajo
     glTexCoord2f(0, 0); glVertex3f(x, y, z)
     glTexCoord2f(1, 0); glVertex3f(x + width, y, z)
     glTexCoord2f(1, 1); glVertex3f(x + width, y, z - depth)
     glTexCoord2f(0, 1); glVertex3f(x, y, z - depth)
-    # Arriba
     glTexCoord2f(0, 0); glVertex3f(x, y + height, z)
     glTexCoord2f(1, 0); glVertex3f(x + width, y + height, z)
     glTexCoord2f(1, 1); glVertex3f(x + width, y + height, z - depth)
@@ -93,7 +88,7 @@ def draw_cube(x, y, z, width, height, depth):
     glBindTexture(GL_TEXTURE_2D, 0)
     glDisable(GL_TEXTURE_2D)
 
-# ---------- PIRÁMIDE (techos rojos) ----------
+# ---------- PIRÁMIDE ----------
 def draw_pyramid(x, y, z, base_width, base_depth, height):
     global roof_texture_id
     if roof_texture_id:
@@ -101,9 +96,8 @@ def draw_pyramid(x, y, z, base_width, base_depth, height):
         glBindTexture(GL_TEXTURE_2D, roof_texture_id)
     else:
         glDisable(GL_TEXTURE_2D)
-        glColor3f(1, 0.5, 0.5)  # color por defecto
+        glColor3f(1, 0.5, 0.5)
 
-    # Lados triangulares
     glBegin(GL_TRIANGLES)
     glTexCoord2f(0.5, 1); glVertex3f(x, y + height, z - base_depth/2)
     glTexCoord2f(1, 0); glVertex3f(x + base_width/2, y, z)
@@ -122,7 +116,6 @@ def draw_pyramid(x, y, z, base_width, base_depth, height):
     glTexCoord2f(0, 0); glVertex3f(x - base_width/2, y, z - base_depth)
     glEnd()
 
-    # Base
     glBegin(GL_QUADS)
     glTexCoord2f(0, 0); glVertex3f(x + base_width/2, y, z)
     glTexCoord2f(1, 0); glVertex3f(x - base_width/2, y, z)
@@ -170,51 +163,65 @@ def mouse_button_callback(window, button, action, mods):
 
 def scroll_callback(window, xoffset, yoffset):
     global scale
-    scale += yoffset * 0.1  # yoffset es positivo o negativo según la dirección del scroll
-    if scale < 0.1:         # evita que el modelo desaparezca
+    scale += yoffset * 0.1
+    if scale < 0.1:
         scale = 0.1
 
 def mouse_move_callback(window, x, y):
     global last_mouse_x, last_mouse_y
     global rotation_x, rotation_y, pan_x, pan_y
-    if mouse_button_pressed:  # rotación
+    if mouse_button_pressed:
         dx = x - last_mouse_x
         dy = y - last_mouse_y
         rotation_y += dx * 0.2
         rotation_x += dy * 0.2
-    elif middle_mouse_pressed:  # desplazamiento
+    elif middle_mouse_pressed:
         dx = x - last_mouse_x
         dy = y - last_mouse_y
-        pan_x += dx * 0.01  # ajusta velocidad
-        pan_y -= dy * 0.01  # invertir eje Y
+        pan_x += dx * 0.01
+        pan_y -= dy * 0.01
     last_mouse_x = x
     last_mouse_y = y
+
+def framebuffer_size_callback(window, width, height):
+    """Se ejecuta cuando cambia el tamaño de la ventana"""
+    global window_width, window_height
+    window_width = width
+    window_height = height
+    
+    # Actualizar viewport
+    glViewport(0, 0, width, height)
+    
+    # Actualizar proyección
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    aspect = width / height if height != 0 else 1.0
+    # Ajusta el rango ortográfico según el aspect ratio
+    glOrtho(-5 * aspect, 5 * aspect, -5, 5, 1, 20)
+    glMatrixMode(GL_MODELVIEW)
+
 # ---------- MODELO 3D ----------
 def draw_model():
     glLoadIdentity()
     gluLookAt(0, 0, 10, 0, 0, 0, 0, 1, 0)
-    glTranslatef(pan_x, pan_y, 0)  # aplica el desplazamiento con el click central
+    glTranslatef(pan_x, pan_y, 0)
     glTranslatef(0, -1, 0)
     glRotatef(rotation_x, 1, 0, 0)
     glRotatef(rotation_y, 0, 1, 0)
     glScalef(scale, scale, scale)
 
-    # Paredes con textura
     draw_cube(-1.5, -2.0, 0, 3, 4, 2)
     draw_cube(-1.0, 2.0, 0, 2, 2, 1.5)
     draw_cube(1.5, -2.0, -1, 3, 2, 2)
     draw_cube(0.5, 0.0, -0.5, 1.5, 1.5, 1)
 
-    # Techos rojos
     glColor3f(1, 0.5, 0.5)
     draw_pyramid(0, 4.0, 0, 2, 1.5, 1.5)
     draw_pyramid(3.0, 0.0, -1, 3, 2, 1.0)
     draw_pyramid(1.25, 1.5, -0.5, 1.5, 1, 0.8)
 
-    # Ventanas y puertas
     draw_windows_and_doors()
 
-    # Wireframe encima
     glEnable(GL_POLYGON_OFFSET_LINE)
     glPolygonOffset(-1, -1)
     glColor3f(0, 0, 0)
@@ -327,7 +334,6 @@ def draw_animated_gradient():
         glEnable(GL_DEPTH_TEST)
 
 # ---------- MAIN ----------
-# ---------- MAIN ---------- 
 def main():
     if not glfw.init(): 
         return
@@ -337,13 +343,11 @@ def main():
         return
     glfw.make_context_current(window)
 
-    # Inicializar shader de fondo
     init_gradient_shader()
 
     glEnable(GL_DEPTH_TEST)
     glClearColor(0, 0, 0, 1)
     load_roof_texture(r"D:\nicol\Documentos\GitHub\CV_03\tejado.jpg")
-
     load_texture(r"D:\nicol\Documentos\GitHub\CV_03\image.jpg")
 
     glMatrixMode(GL_PROJECTION)
@@ -351,6 +355,9 @@ def main():
     glOrtho(-5, 5, -5, 5, 1, 20)
     glMatrixMode(GL_MODELVIEW)
 
+    # Registrar callback para cambios de tamaño
+    glfw.set_framebuffer_size_callback(window, framebuffer_size_callback)
+    
     glfw.set_key_callback(window, key_callback)
     glfw.set_scroll_callback(window, scroll_callback)
     glfw.set_mouse_button_callback(window, mouse_button_callback)
@@ -359,13 +366,11 @@ def main():
     while not glfw.window_should_close(window):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        # --- FONDO DEGRADADO ---
         draw_animated_gradient()
 
-        # --- MODELO 3D ---
-        glUseProgram(0)  # desactivar cualquier shader activo antes de dibujar tu modelo
-        glEnable(GL_TEXTURE_2D)  # si usas texturas
-        glColor3f(1.0, 1.0, 1.0)  # asegura que lo blanco se vea blanco
+        glUseProgram(0)
+        glEnable(GL_TEXTURE_2D)
+        glColor3f(1.0, 1.0, 1.0)
         draw_model()
         glDisable(GL_TEXTURE_2D)
 
