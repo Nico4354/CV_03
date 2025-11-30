@@ -213,12 +213,10 @@ def draw_model():
     draw_cube(-1.5, -2.0, 0, 3, 4, 2)
     draw_cube(-1.0, 2.0, 0, 2, 2, 1.5)
     draw_cube(1.5, -2.0, -1, 3, 2, 2)
-    draw_cube(0.5, 0.0, -0.5, 1.5, 1.5, 1)
 
     glColor3f(1, 0.5, 0.5)
     draw_pyramid(0, 4.0, 0, 2, 1.5, 1.5)
     draw_pyramid(3.0, 0.0, -1, 3, 2, 1.0)
-    draw_pyramid(1.25, 1.5, -0.5, 1.5, 1, 0.8)
 
     draw_windows_and_doors()
 
@@ -234,8 +232,6 @@ def draw_model():
     draw_pyramid(0, 4.0, 0, 2, 1.5, 1.5)
     draw_cube(1.5, -2.0, -1, 3, 2, 2)
     draw_pyramid(3.0, 0.0, -1, 3, 2, 1.0)
-    draw_cube(0.5, 0.0, -0.5, 1.5, 1.5, 1)
-    draw_pyramid(1.25, 1.5, -0.5, 1.5, 1, 0.8)
     glPopMatrix()
     glDisable(GL_POLYGON_OFFSET_LINE)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
