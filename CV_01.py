@@ -342,9 +342,9 @@ def main():
 
     glEnable(GL_DEPTH_TEST)
     glClearColor(0, 0, 0, 1)
-    load_roof_texture(r"D:\nicol\Documentos\Python\Tarea 3 CV\tejado.jpg")
+    load_roof_texture(r"D:\nicol\Documentos\GitHub\CV_03\tejado.jpg")
 
-    load_texture(r"D:\nicol\Documentos\Python\Tarea 3 CV\image.jpg")
+    load_texture(r"D:\nicol\Documentos\GitHub\CV_03\image.jpg")
 
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
