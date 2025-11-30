@@ -5,6 +5,7 @@ import glfw
 import numpy as np
 from PIL import Image
 import ctypes
+import math
 
 # ---------- VARIABLES GLOBALES ----------
 rotation_x = 0.0
@@ -51,6 +52,72 @@ def load_roof_texture(path):
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
     glBindTexture(GL_TEXTURE_2D, 0)
+
+# ---------- EJES DE COORDENADAS ----------
+def draw_coordinate_axes(axis_length=5):
+    """Dibuja los ejes X, Y, Z con etiquetas"""
+    glDisable(GL_TEXTURE_2D)
+    glLineWidth(2.5)
+    
+    # Eje X - Rojo
+    glColor3f(0.9, 0.2, 0.2)
+    glBegin(GL_LINES)
+    glVertex3f(0, 0, 0)
+    glVertex3f(axis_length, 0, 0)
+    glEnd()
+    
+    # Eje Y - Verde
+    glColor3f(0.2, 0.9, 0.2)
+    glBegin(GL_LINES)
+    glVertex3f(0, 0, 0)
+    glVertex3f(0, axis_length, 0)
+    glEnd()
+    
+    # Eje Z - Azul
+    glColor3f(0.2, 0.2, 0.9)
+    glBegin(GL_LINES)
+    glVertex3f(0, 0, 0)
+    glVertex3f(0, 0, axis_length)
+    glEnd()
+    
+    glLineWidth(1)
+    
+    # Puntas de flecha para los ejes
+    draw_arrow_head(axis_length, 0, 0, 0.3, 0.9, 0.2, 0.2)  # X
+    draw_arrow_head(0, axis_length, 0, 0.3, 0.2, 0.9, 0.2)  # Y
+    draw_arrow_head(0, 0, axis_length, 0.3, 0.2, 0.2, 0.9)  # Z
+
+def draw_arrow_head(x, y, z, size, r, g, b):
+    """Dibuja una punta de flecha pequeña"""
+    glColor3f(r, g, b)
+    glBegin(GL_TRIANGLES)
+    
+    # Triángulo en el eje X
+    if x != 0:
+        glVertex3f(x, y, z)
+        glVertex3f(x - size, y + size/2, z + size/2)
+        glVertex3f(x - size, y - size/2, z - size/2)
+        glVertex3f(x, y, z)
+        glVertex3f(x - size, y - size/2, z + size/2)
+        glVertex3f(x - size, y + size/2, z - size/2)
+    # Triángulo en el eje Y
+    elif y != 0:
+        glVertex3f(x, y, z)
+        glVertex3f(x + size/2, y - size, z + size/2)
+        glVertex3f(x - size/2, y - size, z + size/2)
+        glVertex3f(x, y, z)
+        glVertex3f(x - size/2, y - size, z - size/2)
+        glVertex3f(x + size/2, y - size, z - size/2)
+    # Triángulo en el eje Z
+    else:
+        glVertex3f(x, y, z)
+        glVertex3f(x + size/2, y + size/2, z - size)
+        glVertex3f(x - size/2, y + size/2, z - size)
+        glVertex3f(x, y, z)
+        glVertex3f(x - size/2, y - size/2, z - size)
+        glVertex3f(x + size/2, y - size/2, z - size)
+    
+    glEnd()
 
 # ---------- CUBO CON TEXTURA ----------
 def draw_cube(x, y, z, width, height, depth):
@@ -189,14 +256,11 @@ def framebuffer_size_callback(window, width, height):
     window_width = width
     window_height = height
     
-    # Actualizar viewport
     glViewport(0, 0, width, height)
     
-    # Actualizar proyección
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
     aspect = width / height if height != 0 else 1.0
-    # Ajusta el rango ortográfico según el aspect ratio
     glOrtho(-5 * aspect, 5 * aspect, -5, 5, 1, 20)
     glMatrixMode(GL_MODELVIEW)
 
@@ -235,6 +299,9 @@ def draw_model():
     glPopMatrix()
     glDisable(GL_POLYGON_OFFSET_LINE)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
+    
+    # Dibujar ejes de coordenadas
+    draw_coordinate_axes(10.5)
 
 # ---------- SHADER DE FONDO ANIMADO ----------
 _gradient_prog = None
@@ -333,7 +400,7 @@ def draw_animated_gradient():
 def main():
     if not glfw.init(): 
         return
-    window = glfw.create_window(800, 600, "Modelo 3D con Textura", None, None)
+    window = glfw.create_window(800, 600, "Modelo 3D con Textura y Ejes", None, None)
     if not window:
         glfw.terminate()
         return
@@ -351,9 +418,7 @@ def main():
     glOrtho(-5, 5, -5, 5, 1, 20)
     glMatrixMode(GL_MODELVIEW)
 
-    # Registrar callback para cambios de tamaño
     glfw.set_framebuffer_size_callback(window, framebuffer_size_callback)
-    
     glfw.set_key_callback(window, key_callback)
     glfw.set_scroll_callback(window, scroll_callback)
     glfw.set_mouse_button_callback(window, mouse_button_callback)
