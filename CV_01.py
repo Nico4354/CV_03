@@ -3,70 +3,74 @@ from OpenGL.GLU import *
 from OpenGL.GL import shaders
 import glfw
 import numpy as np
-from PIL import Image
 import ctypes
-import math
+import os
 
-# ---------- VARIABLES GLOBALES ----------
+# ---------- VARIABLES GLOBALES DE CÁMARA E INTERACCIÓN ----------
 rotation_x = 0.0
 rotation_y = 0.0
 scale = 1.0
 mouse_button_pressed = False
 last_mouse_x = 0
 last_mouse_y = 0
-wall_texture_id = None
-roof_texture_id = None
 pan_x = 0.0
 pan_y = 0.0
 middle_mouse_pressed = False
 window_width = 800
 window_height = 600
 
-# NUEVA VARIABLE: Controla si se ven los ejes
+# Controla si se ven los ejes
 show_axes = True 
 
-# ---------- TEXTURA ----------
-def load_texture(path):
-    global wall_texture_id
+# Variable para la lista de visualización del STL
+stl_display_list = None
+
+# ---------- FUNCIONES AUXILIARES ----------
+
+def load_stl(file_path):
+    """
+    Carga un archivo STL (ASCII) simple y crea una Display List de OpenGL.
+    """
+    global stl_display_list
+    vertices = []
+    normals = []
+    
+    current_normal = (0, 0, 0)
+    
     try:
-        img = Image.open(path).transpose(Image.FLIP_TOP_BOTTOM)
-        img_data = img.convert("RGBA").tobytes()
-        width, height = img.size
+        with open(file_path, 'r') as f:
+            for line in f:
+                parts = line.strip().split()
+                if not parts:
+                    continue
+                    
+                if parts[0] == 'facet' and parts[1] == 'normal':
+                    current_normal = (float(parts[2]), float(parts[3]), float(parts[4]))
+                elif parts[0] == 'vertex':
+                    v = (float(parts[1]), float(parts[2]), float(parts[3]))
+                    vertices.append((current_normal, v))
+    except FileNotFoundError:
+        print(f"Error: No se encontró el archivo {file_path}")
+        return
 
-        wall_texture_id = glGenTextures(1)
-        glBindTexture(GL_TEXTURE_2D, wall_texture_id)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0,
-                     GL_RGBA, GL_UNSIGNED_BYTE, img_data)
-        glGenerateMipmap(GL_TEXTURE_2D)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        glBindTexture(GL_TEXTURE_2D, 0)
-    except Exception as e:
-        print(f"Error cargando textura {path}: {e}")
+    # Crear Display List
+    stl_display_list = glGenLists(1)
+    glNewList(stl_display_list, GL_COMPILE)
+    
+    glBegin(GL_TRIANGLES)
+    for normal, vertex in vertices:
+        glNormal3f(*normal)
+        glVertex3f(*vertex)
+    glEnd()
+    
+    glEndList()
+    print(f"Modelo STL cargado: {len(vertices)//3} triángulos.")
 
-def load_roof_texture(path):
-    global roof_texture_id
-    try:
-        img = Image.open(path).transpose(Image.FLIP_TOP_BOTTOM)
-        img_data = img.convert("RGBA").tobytes()
-        width, height = img.size
 
-        roof_texture_id = glGenTextures(1)
-        glBindTexture(GL_TEXTURE_2D, roof_texture_id)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0,
-                     GL_RGBA, GL_UNSIGNED_BYTE, img_data)
-        glGenerateMipmap(GL_TEXTURE_2D)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        glBindTexture(GL_TEXTURE_2D, 0)
-    except Exception as e:
-        print(f"Error cargando textura techo {path}: {e}")
-
-# ---------- FUNCIONES DE DIBUJO DE EJES ----------
 def draw_axes(length=10.0):
     """Dibuja líneas para los ejes X (Rojo), Y (Verde), Z (Azul)"""
-    glDisable(GL_TEXTURE_2D) # Importante: quitar texturas para que se vean los colores
-    glLineWidth(3.0)         # Líneas más gruesas para verlas mejor
+    glDisable(GL_TEXTURE_2D) 
+    glLineWidth(3.0)
 
     glBegin(GL_LINES)
     # Eje X - ROJO
@@ -85,111 +89,12 @@ def draw_axes(length=10.0):
     glVertex3f(0, 0, length)
     glEnd()
 
-    glLineWidth(1.0) # Restaurar grosor normal
-    glColor3f(1.0, 1.0, 1.0) # Restaurar color blanco
-
-# ---------- CUBO CON TEXTURA ----------
-def draw_cube(x, y, z, width, height, depth):
-    global wall_texture_id
-    if wall_texture_id:
-        glEnable(GL_TEXTURE_2D)
-        glBindTexture(GL_TEXTURE_2D, wall_texture_id)
-    
-    glBegin(GL_QUADS)
-    # Frente
-    glTexCoord2f(0, 0); glVertex3f(x, y, z)
-    glTexCoord2f(1, 0); glVertex3f(x + width, y, z)
-    glTexCoord2f(1, 1); glVertex3f(x + width, y + height, z)
-    glTexCoord2f(0, 1); glVertex3f(x, y + height, z)
-    # Atrás
-    glTexCoord2f(0, 0); glVertex3f(x, y, z - depth)
-    glTexCoord2f(1, 0); glVertex3f(x + width, y, z - depth)
-    glTexCoord2f(1, 1); glVertex3f(x + width, y + height, z - depth)
-    glTexCoord2f(0, 1); glVertex3f(x, y + height, z - depth)
-    # Izquierda
-    glTexCoord2f(0, 0); glVertex3f(x, y, z)
-    glTexCoord2f(1, 0); glVertex3f(x, y, z - depth)
-    glTexCoord2f(1, 1); glVertex3f(x, y + height, z - depth)
-    glTexCoord2f(0, 1); glVertex3f(x, y + height, z)
-    # Derecha
-    glTexCoord2f(0, 0); glVertex3f(x + width, y, z)
-    glTexCoord2f(1, 0); glVertex3f(x + width, y, z - depth)
-    glTexCoord2f(1, 1); glVertex3f(x + width, y + height, z - depth)
-    glTexCoord2f(0, 1); glVertex3f(x + width, y + height, z)
-    # Arriba
-    glTexCoord2f(0, 0); glVertex3f(x, y + height, z)
-    glTexCoord2f(1, 0); glVertex3f(x + width, y + height, z)
-    glTexCoord2f(1, 1); glVertex3f(x + width, y + height, z - depth)
-    glTexCoord2f(0, 1); glVertex3f(x, y + height, z - depth)
-    # Abajo
-    # (Omitimos abajo si no se ve, pero lo dejo por completitud)
-    glEnd()
-
-    glBindTexture(GL_TEXTURE_2D, 0)
-    glDisable(GL_TEXTURE_2D)
-
-# ---------- PIRÁMIDE ----------
-def draw_pyramid(x, y, z, base_width, base_depth, height):
-    global roof_texture_id
-    if roof_texture_id:
-        glEnable(GL_TEXTURE_2D)
-        glBindTexture(GL_TEXTURE_2D, roof_texture_id)
-    else:
-        glDisable(GL_TEXTURE_2D)
-        glColor3f(1, 0.5, 0.5)
-
-    glBegin(GL_TRIANGLES)
-    # Frente
-    glTexCoord2f(0.5, 1); glVertex3f(x, y + height, z - base_depth/2)
-    glTexCoord2f(1, 0); glVertex3f(x + base_width/2, y, z)
-    glTexCoord2f(0, 0); glVertex3f(x - base_width/2, y, z)
-    # Derecha
-    glTexCoord2f(0.5, 1); glVertex3f(x, y + height, z - base_depth/2)
-    glTexCoord2f(1, 0); glVertex3f(x + base_width/2, y, z - base_depth)
-    glTexCoord2f(0, 0); glVertex3f(x + base_width/2, y, z)
-    # Atrás
-    glTexCoord2f(0.5, 1); glVertex3f(x, y + height, z - base_depth/2)
-    glTexCoord2f(1, 0); glVertex3f(x - base_width/2, y, z - base_depth)
-    glTexCoord2f(0, 0); glVertex3f(x + base_width/2, y, z - base_depth)
-    # Izquierda
-    glTexCoord2f(0.5, 1); glVertex3f(x, y + height, z - base_depth/2)
-    glTexCoord2f(1, 0); glVertex3f(x - base_width/2, y, z)
-    glTexCoord2f(0, 0); glVertex3f(x - base_width/2, y, z - base_depth)
-    glEnd()
-
-    # Base (opcional)
-    glBegin(GL_QUADS)
-    glTexCoord2f(0, 0); glVertex3f(x + base_width/2, y, z)
-    glTexCoord2f(1, 0); glVertex3f(x - base_width/2, y, z)
-    glTexCoord2f(1, 1); glVertex3f(x - base_width/2, y, z - base_depth)
-    glTexCoord2f(0, 1); glVertex3f(x + base_width/2, y, z - base_depth)
-    glEnd()
-
-    if roof_texture_id:
-        glBindTexture(GL_TEXTURE_2D, 0)
-        glDisable(GL_TEXTURE_2D)
-
-# ---------- VENTANAS Y PUERTAS ----------
-def draw_windows_and_doors():
-    glColor3f(0, 0, 0)
-    glBegin(GL_QUADS)
-    # Puerta
-    glVertex3f(-1.5, -2.0, 0.1)
-    glVertex3f(-0.5, -2.0, 0.1)
-    glVertex3f(-0.5, -1.0, 0.1)
-    glVertex3f(-1.5, -1.0, 0.1)
-    glEnd()
-    # Ventana
-    glBegin(GL_QUADS)
-    glVertex3f(-1.0, 0.0, 0.1)
-    glVertex3f(-0.5, 0.0, 0.1)
-    glVertex3f(-0.5, 0.5, 0.1)
-    glVertex3f(-1.0, 0.5, 0.1)
-    glEnd()
+    glLineWidth(1.0) 
+    glColor3f(1.0, 1.0, 1.0) 
 
 # ---------- TRANSFORMACIONES (INPUTS) ----------
 def key_callback(window, key, scancode, action, mods):
-    global rotation_x, rotation_y, scale, show_axes # Importamos show_axes
+    global rotation_x, rotation_y, scale, show_axes
     
     if action == glfw.PRESS or action == glfw.REPEAT:
         # Movimiento
@@ -201,9 +106,9 @@ def key_callback(window, key, scancode, action, mods):
         elif key == glfw.KEY_EQUAL: scale += 0.1
         elif key == glfw.KEY_MINUS: scale -= 0.1
         
-        # --- NUEVO: BOTÓN PARA OCULTAR EJES (Tecla 'A') ---
+        # Ocultar/Mostrar ejes (Tecla 'A')
         elif key == glfw.KEY_A and action == glfw.PRESS:
-            show_axes = not show_axes # Invierte el valor (True -> False -> True)
+            show_axes = not show_axes
             print(f"Ejes visibles: {show_axes}")
 
 def mouse_button_callback(window, button, action, mods):
@@ -243,60 +148,45 @@ def framebuffer_size_callback(window, width, height):
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
     aspect = width / height if height != 0 else 1.0
-    glOrtho(-5 * aspect, 5 * aspect, -5, 5, 1, 20)
+    glOrtho(-5 * aspect, 5 * aspect, -5, 5, 1, 100) # Aumenté el plano lejano a 100
     glMatrixMode(GL_MODELVIEW)
+
 
 # ---------- MODELO 3D ----------
 def draw_model():
     glLoadIdentity()
     gluLookAt(0, 0, 10, 0, 0, 0, 0, 1, 0)
     
-    # Transformaciones globales
+    # Transformaciones globales (Cámara/Mouse)
     glTranslatef(pan_x, pan_y, 0)
     glRotatef(rotation_x, 1, 0, 0)
     glRotatef(rotation_y, 0, 1, 0)
     glScalef(scale, scale, scale)
 
-    # --- AQUÍ DIBUJAMOS LOS EJES CONDICIONALMENTE ---
-    global show_axes # Leemos la variable global
+    # --- EJES (Estos se quedan igual para orientarte) ---
+    global show_axes
     if show_axes:
         glDisable(GL_DEPTH_TEST) 
         draw_axes(15.0) 
         glEnable(GL_DEPTH_TEST)
-    # -----------------------------------------------
 
-    # Centrar la casa
-    glTranslatef(-1.5, -1.75, 1.5) 
-
-    # Dibujo de la casa
-    draw_cube(-1.5, -2.0, 0, 3, 4, 2)
-    draw_cube(-1.0, 2.0, 0, 2, 2, 1.5)
-    draw_cube(1.5, -2.0, -1, 3, 2, 2)
-
-    glColor3f(1, 0.5, 0.5)
-    draw_pyramid(0, 4.0, 0, 2, 1.5, 1.5)
-    draw_pyramid(3.0, 0.0, -1, 3, 2, 1.0)
-
-    draw_windows_and_doors()
-
-    # Wireframe
-    glEnable(GL_POLYGON_OFFSET_LINE)
-    glPolygonOffset(-1, -1)
-    glColor3f(0, 0, 0)
-    glLineWidth(2)
-    glPushMatrix()
-    glScalef(1.01, 1.01, 1.01)
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
-    
-    draw_cube(-1.5, -2.0, 0, 3, 4, 2)
-    draw_cube(-1.0, 2.0, 0, 2, 2, 1.5)
-    draw_pyramid(0, 4.0, 0, 2, 1.5, 1.5)
-    draw_cube(1.5, -2.0, -1, 3, 2, 2)
-    draw_pyramid(3.0, 0.0, -1, 3, 2, 1.0)
-    
-    glPopMatrix()
-    glDisable(GL_POLYGON_OFFSET_LINE)
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
+    # --- DIBUJAR MODELO STL ---
+    if stl_display_list:
+        glPushMatrix()
+        
+        # --- CORRECCIÓN DE ORIENTACIÓN ---
+        # Rotamos -90 grados en X para que el eje Z (altura de GeoGebra) 
+        # coincida con el eje Y (altura de OpenGL).
+        glRotatef(-90, 1, 0, 0) 
+        
+        # Ajuste de escala
+        glScalef(0.1, 0.1, 0.1) 
+        
+        # Color base del modelo
+        glColor3f(0.7, 0.7, 0.8) 
+        
+        glCallList(stl_display_list)
+        glPopMatrix()
 
 # ---------- SHADER DE FONDO ANIMADO ----------
 _gradient_prog = None
@@ -401,13 +291,11 @@ def main():
     if not glfw.init(): 
         return
     
-    # --- CONFIGURACIÓN DE SEGURIDAD (Para que funcione en tu PC) ---
     glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
     glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
     glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_COMPAT_PROFILE)
-    # -------------------------------------------------------------
 
-    window = glfw.create_window(800, 600, "Modelo 3D - Presiona 'A' para Ejes", None, None)
+    window = glfw.create_window(800, 600, "Visor 3D STL - Proyecto Final", None, None)
     if not window:
         glfw.terminate()
         return
@@ -415,15 +303,27 @@ def main():
 
     init_gradient_shader()
 
+    # Configuración básica de OpenGL
     glEnable(GL_DEPTH_TEST)
+    glEnable(GL_LIGHTING)   # Activar iluminación para ver el relieve
+    glEnable(GL_LIGHT0)     # Activar luz por defecto
+    glEnable(GL_COLOR_MATERIAL) # Permitir que glColor afecte al material
+    
+    # Configurar luz
+    glLightfv(GL_LIGHT0, GL_POSITION, (10, 10, 10, 1))
+    
     glClearColor(0, 0, 0, 1)
-    # Rutas (recuerda cambiarlas si es necesario)
-    load_roof_texture(r"D:\nicol\Documentos\GitHub\CV_03\tejado.jpg")
-    load_texture(r"D:\nicol\Documentos\GitHub\CV_03\image.jpg")
 
+    # Cargar el modelo STL
+    base_dir = os.path.dirname(__file__)
+    stl_path = os.path.join(base_dir, "Final.stl")
+    load_stl(stl_path)
+
+    # Configurar proyección inicial
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-    glOrtho(-5, 5, -5, 5, 1, 20)
+    aspect = 800 / 600
+    glOrtho(-5 * aspect, 5 * aspect, -5, 5, 1, 100)
     glMatrixMode(GL_MODELVIEW)
 
     glfw.set_framebuffer_size_callback(window, framebuffer_size_callback)
@@ -438,11 +338,8 @@ def main():
         draw_animated_gradient()
 
         glUseProgram(0)
-        glEnable(GL_TEXTURE_2D)
-        glColor3f(1.0, 1.0, 1.0)
         draw_model()
-        glDisable(GL_TEXTURE_2D)
-
+        
         glfw.swap_buffers(window)
         glfw.poll_events()
 
