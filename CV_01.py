@@ -335,7 +335,7 @@ def draw_bg():
 # ---------- MAIN ----------
 def main():
     if not glfw.init(): return
-    window = glfw.create_window(800, 600, "Final - Sin Sombras", None, None)
+    window = glfw.create_window(800, 600, "CV_03", None, None)
     if not window: glfw.terminate(); return
     glfw.make_context_current(window)
     
