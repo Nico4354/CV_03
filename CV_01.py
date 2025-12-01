@@ -20,6 +20,15 @@ pan_y = 0.0
 middle_mouse_pressed = False
 show_axes = True 
 
+# --- AJUSTES DE POSICIÓN Y ESCALA ---
+# Escala para que el tamaño coincida con la casa
+ESCALA_VENTANAS = 4.0 
+
+# Si las ventanas flotan, ajusta estos valores para moverlas todas juntas
+OFFSET_VENTANAS_X = 0.0 
+OFFSET_VENTANAS_Y = 0.0
+OFFSET_VENTANAS_Z = 0.0
+
 # Listas de visualización
 stl_walls_list = None
 stl_roof_list = None
@@ -30,12 +39,11 @@ wall_texture_id = None
 roof_texture_id = None
 grass_texture_id = None 
 
-# ---------- CARGA DE STL (LÓGICA GEOMÉTRICA) ----------
+# ---------- CARGA DE STL ----------
 def load_stl(file_path):
     global stl_walls_list, stl_roof_list, stl_ground_list
     all_triangles = []
-    min_z = float('inf') 
-    max_z = float('-inf')
+    min_z = float('inf'); max_z = float('-inf')
     
     try:
         with open(file_path, 'r') as f:
@@ -67,8 +75,6 @@ def load_stl(file_path):
     total_height = max_z - min_z
     ground_threshold = min_z + (total_height * 0.20)
     
-    print(f"Altura Modelo: {min_z:.2f} a {max_z:.2f}. Umbral Pasto: < {ground_threshold:.2f}")
-    
     for normal, verts in all_triangles:
         avg_z = sum([v[2] for v in verts]) / 3.0
         if abs(normal[2]) > 0.5: 
@@ -76,14 +82,12 @@ def load_stl(file_path):
             else: roof_geometry.append((normal, verts))
         else: walls_geometry.append((normal, verts))
 
-    # Generar Listas con Mapeo Geométrico
     stl_walls_list = glGenLists(1); glNewList(stl_walls_list, GL_COMPILE); glBegin(GL_TRIANGLES)
     tex_scale = 5.0 
     for normal, verts in walls_geometry:
         glNormal3f(*normal)
         xs=[v[0] for v in verts]; ys=[v[1] for v in verts]; zs=[v[2] for v in verts]
         sx=max(xs)-min(xs); sy=max(ys)-min(ys); sz=max(zs)-min(zs)
-        # Lógica anti-estiramiento
         if sx<=sy and sx<=sz: m='YZ'
         elif sy<=sx and sy<=sz: m='XZ'
         else: m='XY'
@@ -129,85 +133,58 @@ def load_textures_all(base_path):
     roof_texture_id = _load_img_generic(os.path.join(base_path, "tejado.jpg"))
     grass_texture_id = _load_img_generic(os.path.join(base_path, "pasto.jpg"))
 
-# ---------- DIBUJO DE DETALLES "GRUESOS" (SOLUCIÓN VISIBILIDAD) ----------
+# ---------- DIBUJO DE DETALLES (VERSIÓN SIMPLE Y LIMPIA) ----------
 
-def draw_thick_window(points, thickness=2.0): # <-- AUMENTADO GROSOR A 2.0
+def draw_simple_window(points):
     """
-    Dibuja una ventana con MUCHO GROSOR para asegurar que atraviese la pared.
+    Dibuja una ventana simple (sin cajas raras) escalada y desplazada.
     """
-    # 1. Calcular Normal del plano de la ventana
-    p0, p1, p2 = np.array(points[0]), np.array(points[1]), np.array(points[2])
-    v1 = p1 - p0
-    v2 = p2 - p0
-    normal = np.cross(v1, v2)
-    norm_len = np.linalg.norm(normal)
-    if norm_len == 0: return # Puntos inválidos
-    normal = normal / norm_len # Normalizar
-    
-    # 2. Desplazamientos: Extruimos MUCHO hacia ambos lados
-    offset_out = normal * (thickness / 2.0)
-    offset_in = -normal * (thickness / 2.0)
-    
-    # 3. Dibujar Caja (Vidrio)
-    glColor3f(0.2, 0.3, 0.5) # Azul Vidrio
-    
-    # Cara Frontal (Offset +)
-    glBegin(GL_QUADS)
-    for p in points: glVertex3fv(np.array(p) + offset_out)
-    glEnd()
-    
-    # Cara Trasera (Offset -)
-    glBegin(GL_QUADS)
-    for p in reversed(points): glVertex3fv(np.array(p) + offset_in)
-    glEnd()
-    
-    # Conectar lados para cerrar la caja (Opcional, pero ayuda si se ve de lado)
-    glBegin(GL_QUAD_STRIP)
+    # 1. Aplicar ESCALA y OFFSET a los puntos
+    scaled_points = []
     for p in points:
-        glVertex3fv(np.array(p) + offset_out)
-        glVertex3fv(np.array(p) + offset_in)
-    # Cerrar loop
-    glVertex3fv(np.array(points[0]) + offset_out)
-    glVertex3fv(np.array(points[0]) + offset_in)
+        nx = p[0] * ESCALA_VENTANAS + OFFSET_VENTANAS_X
+        ny = p[1] * ESCALA_VENTANAS + OFFSET_VENTANAS_Y
+        nz = p[2] * ESCALA_VENTANAS + OFFSET_VENTANAS_Z
+        scaled_points.append((nx, ny, nz))
+    
+    # 2. Dibujar VIDRIO (Un solo quad)
+    glColor3f(0.2, 0.3, 0.5) # Azul Vidrio
+    glBegin(GL_QUADS)
+    for p in scaled_points: glVertex3fv(p)
     glEnd()
     
-    # 4. Marco Blanco
+    # 3. Dibujar MARCO (Líneas blancas gruesas alrededor)
     glColor3f(0.9, 0.9, 0.9)
     glLineWidth(3.0)
-    
-    # Marco exterior
     glBegin(GL_LINE_LOOP)
-    for p in points: glVertex3fv(np.array(p) + offset_out * 1.05)
+    for p in scaled_points: glVertex3fv(p)
     glEnd()
     
-    # 5. Cruz Divisoria (Solo en la cara frontal)
-    center = np.mean(points, axis=0)
-    mid_bottom = (np.array(points[0]) + np.array(points[1])) / 2
-    mid_top = (np.array(points[2]) + np.array(points[3])) / 2
-    mid_right = (np.array(points[1]) + np.array(points[2])) / 2
-    mid_left = (np.array(points[3]) + np.array(points[0])) / 2
+    # 4. CRUZ (Divisiones)
+    # Calculamos puntos medios
+    p0, p1, p2, p3 = np.array(scaled_points[0]), np.array(scaled_points[1]), np.array(scaled_points[2]), np.array(scaled_points[3])
+    mid_bottom = (p0 + p1) / 2
+    mid_top = (p2 + p3) / 2
+    mid_right = (p1 + p2) / 2
+    mid_left = (p3 + p0) / 2
     
     glBegin(GL_LINES)
-    # Vertical
-    glVertex3fv(mid_bottom + offset_out * 1.05)
-    glVertex3fv(mid_top + offset_out * 1.05)
-    # Horizontal
-    glVertex3fv(mid_left + offset_out * 1.05)
-    glVertex3fv(mid_right + offset_out * 1.05)
+    glVertex3fv(mid_bottom); glVertex3fv(mid_top)
+    glVertex3fv(mid_left); glVertex3fv(mid_right)
     glEnd()
     glLineWidth(1.0)
 
-def draw_thick_garage(points, thickness=2.5): # <-- PUERTA GRUESA
-    # Calcular normal para extrusión
-    p0, p1, p2 = np.array(points[0]), np.array(points[1]), np.array(points[2])
-    normal = np.cross(p1-p0, p2-p0)
-    normal /= np.linalg.norm(normal)
-    offset = normal * thickness
-    
-    # Panel Gris
-    glColor3f(0.3, 0.3, 0.35)
+def draw_simple_garage(points):
+    scaled_points = []
+    for p in points:
+        nx = p[0] * ESCALA_VENTANAS + OFFSET_VENTANAS_X
+        ny = p[1] * ESCALA_VENTANAS + OFFSET_VENTANAS_Y
+        nz = p[2] * ESCALA_VENTANAS + OFFSET_VENTANAS_Z
+        scaled_points.append((nx, ny, nz))
+        
+    glColor3f(0.3, 0.3, 0.35) # Gris oscuro
     glBegin(GL_QUADS)
-    for p in points: glVertex3fv(np.array(p) + offset)
+    for p in scaled_points: glVertex3fv(p)
     glEnd()
     
     # Rayas
@@ -215,50 +192,40 @@ def draw_thick_garage(points, thickness=2.5): # <-- PUERTA GRUESA
     glLineWidth(2.0)
     steps = 5
     
-    v_left = np.array(points[3]) - np.array(points[0])
-    v_right = np.array(points[2]) - np.array(points[1])
+    p0, p1, p2, p3 = np.array(scaled_points[0]), np.array(scaled_points[1]), np.array(scaled_points[2]), np.array(scaled_points[3])
+    v_left = p3 - p0
+    v_right = p2 - p1
     
     glBegin(GL_LINES)
     for i in range(1, steps):
         f = i / steps
-        p_start = np.array(points[0]) + v_left * f + offset * 1.01
-        p_end = np.array(points[1]) + v_right * f + offset * 1.01
-        glVertex3fv(p_start); glVertex3fv(p_end)
+        start = p0 + v_left * f
+        end = p1 + v_right * f
+        glVertex3fv(start); glVertex3fv(end)
     glEnd()
     glLineWidth(1.0)
 
 def draw_all_custom_elements():
-    # IMPORTANTE: Desactivar luz para que los colores planos se vean brillantes
-    # y no dependan de las normales (que pueden estar fallando)
-    glDisable(GL_LIGHTING) 
+    # Desactivamos texturas para dibujar colores sólidos
     glDisable(GL_TEXTURE_2D)
     
-    # Tus coordenadas exactas:
-    # Ventana 1
-    draw_thick_window([(3,2,4.5), (1,2,4.5), (1,2,3), (3,2,3)])
+    # IMPORTANTE: Desactivamos Depth Test momentáneamente para que se dibujen SIEMPRE
+    # encima de la pared, evitando que queden "dentro" o parpadeen.
+    # Como son detalles simples, esto funciona perfecto.
+    glDisable(GL_DEPTH_TEST) 
     
-    # Ventana 2
-    draw_thick_window([(2.5,1,7), (1.5,1,7), (1.5,1,7.5), (2.5,1,7.5)])
-    
-    # Ventana 3
-    draw_thick_window([(3,2,4.5), (1,2,4.5), (1,2,3), (3,2,3)])
-    
-    # Ventana 4
-    draw_thick_window([(-4, -0.5 , 2.7), (-4,-0.5 ,3.3 ), (-4,0.5 , 3.3) , (-4,0.5 ,2.7 )])
-    
-    # Ventana 5 (Corregida sintaxis)
-    draw_thick_window([(1,0.5,7.5), (1,-0.5,7.5), (1,-0.5,7), (1,0.5,7)])
-    
-    # Ventana 6
-    draw_thick_window([(-1, 1.83814, 3.24693), (-1, 1.83814, 2.62139), (-3, 1.83814, 2.62139), (-3, 1.83814, 3.24693)])
-    
-    # Puerta Garaje
-    draw_thick_garage([(-1,2,0.5), (-3,2,0.5), (-3,2,2), (-1,2,2)])
+    draw_simple_window([(3,2,4.5), (1,2,4.5), (1,2,3), (3,2,3)])
+    draw_simple_window([(2.5,1,7), (1.5,1,7), (1.5,1,7.5), (2.5,1,7.5)])
+    draw_simple_window([(3,2,4.5), (1,2,4.5), (1,2,3), (3,2,3)])
+    draw_simple_window([(-4, -0.5 , 2.7), (-4,-0.5 ,3.3 ), (-4,0.5 , 3.3) , (-4,0.5 ,2.7 )])
+    draw_simple_window([(1,0.5,7.5), (1,-0.5,7.5), (1,-0.5,7), (1,0.5,7)])
+    draw_simple_window([(-1, 1.83814, 3.24693), (-1, 1.83814, 2.62139), (-3, 1.83814, 2.62139), (-3, 1.83814, 3.24693)])
+    draw_simple_garage([(-1,2,0.5), (-3,2,0.5), (-3,2,2), (-1,2,2)])
 
-    # Restaurar estados
-    glColor3f(1,1,1)
+    # Restaurar
+    glEnable(GL_DEPTH_TEST)
     glEnable(GL_TEXTURE_2D)
-    glEnable(GL_LIGHTING)
+    glColor3f(1,1,1)
 
 # ---------- DIBUJO ESCENA ----------
 def draw_model():
@@ -279,10 +246,7 @@ def draw_model():
     glRotatef(-90, 1, 0, 0)
     glScalef(0.1, 0.1, 0.1) 
     
-    # Dibujar detalles PRIMERO
-    draw_all_custom_elements()
-    
-    # Dibujar la casa
+    # 1. Dibujar la casa (SÓLIDO)
     glColor3f(1, 1, 1)
     if stl_walls_list:
         if wall_texture_id: glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, wall_texture_id)
@@ -300,6 +264,10 @@ def draw_model():
         glCallList(stl_ground_list)
 
     glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D)
+    
+    # 2. Dibujar ventanas AL FINAL
+    draw_all_custom_elements()
+    
     glPopMatrix()
 
 # ---------- INPUTS / UTILS ----------
@@ -310,7 +278,9 @@ def key_callback(w, k, s, a, m):
         elif k==glfw.KEY_DOWN: rotation_x-=5
         elif k==glfw.KEY_LEFT: rotation_y-=5
         elif k==glfw.KEY_RIGHT: rotation_y+=5
-        elif k==glfw.KEY_A and a==glfw.PRESS: show_axes=not show_axes
+        elif k==glfw.KEY_EQUAL: scale += 0.1
+        elif key == glfw.KEY_MINUS: scale -= 0.1
+        elif key == glfw.KEY_A and a==glfw.PRESS: show_axes=not show_axes
 
 def mouse_move_callback(w, x, y):
     global last_mouse_x, last_mouse_y, rotation_x, rotation_y, pan_x, pan_y
@@ -347,11 +317,10 @@ def draw_bg():
 # ---------- MAIN ----------
 def main():
     if not glfw.init(): return
-    window = glfw.create_window(800, 600, "Final Corregido", None, None)
+    window = glfw.create_window(800, 600, "Final - Ventanas Simples", None, None)
     if not window: glfw.terminate(); return
     glfw.make_context_current(window)
     
-    # Callbacks
     glfw.set_key_callback(window, key_callback)
     glfw.set_cursor_pos_callback(window, mouse_move_callback)
     glfw.set_mouse_button_callback(window, lambda w,b,a,m: globals().update(mouse_button_pressed=(b==0 and a==1), middle_mouse_pressed=(b==2 and a==1)))
@@ -361,25 +330,19 @@ def main():
     glEnable(GL_DEPTH_TEST); glEnable(GL_LIGHTING); glEnable(GL_LIGHT0); glEnable(GL_COLOR_MATERIAL)
     glLightfv(GL_LIGHT0, GL_POSITION, (10, 10, 10, 1)); glClearColor(0,0,0,1)
 
-    # RUTA
     ruta = r"D:\nicol\Documentos\GitHub\CV_03"
     load_textures_all(ruta)
     load_stl(os.path.join(ruta, "Final.stl"))
 
-    # BUCLE PRINCIPAL (SOLUCIÓN PANTALLA NEGRA)
     while not glfw.window_should_close(window):
-        # 1. ACTUALIZAR VIEWPORT Y PROYECCIÓN CADA FRAME
         width, height = glfw.get_framebuffer_size(window)
-        if height == 0: height = 1 # Evitar división por cero
+        if height == 0: height = 1 
         glViewport(0, 0, width, height)
-        
         glMatrixMode(GL_PROJECTION); glLoadIdentity()
         aspect = width / height
-        # Mantenemos la escala ortográfica ajustada al aspecto
         glOrtho(-5 * aspect, 5 * aspect, -5, 5, 1, 100)
         glMatrixMode(GL_MODELVIEW)
 
-        # 2. DIBUJAR
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         draw_bg()
         draw_model()
