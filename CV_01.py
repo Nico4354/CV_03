@@ -24,7 +24,10 @@ show_axes = True
 # Escala para que el tamaño coincida con la casa
 ESCALA_VENTANAS = 4.0 
 
-# Si las ventanas flotan, ajusta estos valores para moverlas todas juntas
+# SI LAS VENTANAS FLOTAN O ESTÁN HUNDIDAS, AJUSTA ESTE VALOR.
+# La pared está en el eje Y (Fondo).
+# Si flotan hacia afuera, hazlo negativo (ej. -0.5).
+# Si están hundidas, hazlo positivo (ej. 0.5).
 OFFSET_VENTANAS_X = 0.0 
 OFFSET_VENTANAS_Y = 0.0
 OFFSET_VENTANAS_Z = 0.0
@@ -68,19 +71,37 @@ def load_stl(file_path):
         print(f"Error: No se encontró {file_path}")
         return
 
+    # --- CLASIFICACIÓN ---
     walls_geometry = []
     roof_geometry = []
     ground_geometry = []
     
     total_height = max_z - min_z
-    ground_threshold = min_z + (total_height * 0.20)
+    ground_threshold = min_z + (total_height * 0.15)
+    
+    # SOLUCIÓN CRÍTICA: Umbral de Altura del Tejado. 
+    # Usamos 85%. Solo el 15% superior del modelo (la pirámide) es candidato a tejado inclinado.
+    roof_height_threshold = min_z + (total_height * 0.85) 
     
     for normal, verts in all_triangles:
         avg_z = sum([v[2] for v in verts]) / 3.0
+        
+        # 1. ¿Superficie Horizontal (Techo/Pasto)?
         if abs(normal[2]) > 0.5: 
-            if avg_z < ground_threshold: ground_geometry.append((normal, verts))
-            else: roof_geometry.append((normal, verts))
-        else: walls_geometry.append((normal, verts))
+            if avg_z < ground_threshold: 
+                ground_geometry.append((normal, verts))
+            else: 
+                roof_geometry.append((normal, verts))
+        
+        # 2. ¿Superficie Inclinada/Vertical (Pared)?
+        else:
+            # Si el triángulo inclinado está MUY ARRIBA (en el 15% superior),
+            # lo forzamos a ser techo.
+            if avg_z > roof_height_threshold:
+                roof_geometry.append((normal, verts))
+            else:
+                # Si está abajo o en el centro (prisma), es una pared normal.
+                walls_geometry.append((normal, verts))
 
     stl_walls_list = glGenLists(1); glNewList(stl_walls_list, GL_COMPILE); glBegin(GL_TRIANGLES)
     tex_scale = 5.0 
@@ -136,9 +157,6 @@ def load_textures_all(base_path):
 # ---------- DIBUJO DE DETALLES (VERSIÓN SIMPLE Y LIMPIA) ----------
 
 def draw_simple_window(points):
-    """
-    Dibuja una ventana simple (sin cajas raras) escalada y desplazada.
-    """
     # 1. Aplicar ESCALA y OFFSET a los puntos
     scaled_points = []
     for p in points:
@@ -148,7 +166,7 @@ def draw_simple_window(points):
         scaled_points.append((nx, ny, nz))
     
     # 2. Dibujar VIDRIO (Un solo quad)
-    glColor3f(0.2, 0.3, 0.5) # Azul Vidrio
+    glColor3f(0.2, 0.3, 0.5) 
     glBegin(GL_QUADS)
     for p in scaled_points: glVertex3fv(p)
     glEnd()
@@ -161,7 +179,6 @@ def draw_simple_window(points):
     glEnd()
     
     # 4. CRUZ (Divisiones)
-    # Calculamos puntos medios
     p0, p1, p2, p3 = np.array(scaled_points[0]), np.array(scaled_points[1]), np.array(scaled_points[2]), np.array(scaled_points[3])
     mid_bottom = (p0 + p1) / 2
     mid_top = (p2 + p3) / 2
@@ -182,7 +199,7 @@ def draw_simple_garage(points):
         nz = p[2] * ESCALA_VENTANAS + OFFSET_VENTANAS_Z
         scaled_points.append((nx, ny, nz))
         
-    glColor3f(0.3, 0.3, 0.35) # Gris oscuro
+    glColor3f(0.3, 0.3, 0.35)
     glBegin(GL_QUADS)
     for p in scaled_points: glVertex3fv(p)
     glEnd()
@@ -206,24 +223,21 @@ def draw_simple_garage(points):
     glLineWidth(1.0)
 
 def draw_all_custom_elements():
-    # Desactivamos texturas para dibujar colores sólidos
     glDisable(GL_TEXTURE_2D)
-    
-    # IMPORTANTE: Desactivamos Depth Test momentáneamente para que se dibujen SIEMPRE
-    # encima de la pared, evitando que queden "dentro" o parpadeen.
-    # Como son detalles simples, esto funciona perfecto.
-    glDisable(GL_DEPTH_TEST) 
+    # ELIMINADO glDisable(GL_DEPTH_TEST) - Permitimos que el muro oculte los objetos
+    glDisable(GL_LIGHTING)
     
     draw_simple_window([(3,2,4.5), (1,2,4.5), (1,2,3), (3,2,3)])
     draw_simple_window([(2.5,1,7), (1.5,1,7), (1.5,1,7.5), (2.5,1,7.5)])
     draw_simple_window([(3,2,4.5), (1,2,4.5), (1,2,3), (3,2,3)])
     draw_simple_window([(-4, -0.5 , 2.7), (-4,-0.5 ,3.3 ), (-4,0.5 , 3.3) , (-4,0.5 ,2.7 )])
     draw_simple_window([(1,0.5,7.5), (1,-0.5,7.5), (1,-0.5,7), (1,0.5,7)])
+    # Corregido el error de sintaxis en el 2do punto de la V6
     draw_simple_window([(-1, 1.83814, 3.24693), (-1, 1.83814, 2.62139), (-3, 1.83814, 2.62139), (-3, 1.83814, 3.24693)])
     draw_simple_garage([(-1,2,0.5), (-3,2,0.5), (-3,2,2), (-1,2,2)])
 
-    # Restaurar
-    glEnable(GL_DEPTH_TEST)
+    glEnable(GL_LIGHTING)
+    # ELIMINADO glEnable(GL_DEPTH_TEST) - Ya está activo globalmente
     glEnable(GL_TEXTURE_2D)
     glColor3f(1,1,1)
 
@@ -247,7 +261,9 @@ def draw_model():
     glScalef(0.1, 0.1, 0.1) 
     
     # 1. Dibujar la casa (SÓLIDO)
+    glDisable(GL_LIGHTING) 
     glColor3f(1, 1, 1)
+    
     if stl_walls_list:
         if wall_texture_id: glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, wall_texture_id)
         else: glDisable(GL_TEXTURE_2D); glColor3f(0.7,0.7,0.7)
@@ -262,7 +278,9 @@ def draw_model():
         if grass_texture_id: glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, grass_texture_id)
         else: glDisable(GL_TEXTURE_2D); glColor3f(0.2,0.8,0.2)
         glCallList(stl_ground_list)
-
+        
+    glEnable(GL_LIGHTING) 
+    
     glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D)
     
     # 2. Dibujar ventanas AL FINAL
@@ -279,8 +297,8 @@ def key_callback(w, k, s, a, m):
         elif k==glfw.KEY_LEFT: rotation_y-=5
         elif k==glfw.KEY_RIGHT: rotation_y+=5
         elif k==glfw.KEY_EQUAL: scale += 0.1
-        elif key == glfw.KEY_MINUS: scale -= 0.1
-        elif key == glfw.KEY_A and a==glfw.PRESS: show_axes=not show_axes
+        elif k == glfw.KEY_MINUS: scale -= 0.1
+        elif k == glfw.KEY_A and a==glfw.PRESS: show_axes=not show_axes
 
 def mouse_move_callback(w, x, y):
     global last_mouse_x, last_mouse_y, rotation_x, rotation_y, pan_x, pan_y
@@ -317,7 +335,7 @@ def draw_bg():
 # ---------- MAIN ----------
 def main():
     if not glfw.init(): return
-    window = glfw.create_window(800, 600, "Final - Ventanas Simples", None, None)
+    window = glfw.create_window(800, 600, "Final - Sin Sombras", None, None)
     if not window: glfw.terminate(); return
     glfw.make_context_current(window)
     
